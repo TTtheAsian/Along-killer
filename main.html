@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>LM Studio 聊天機器人界面</title>
+    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -13,59 +14,66 @@
             height: 100vh;
             margin: 0;
             background-color: #f0f0f0;
+            font-size: 9.8px;
         }
         .main-container {
             display: flex;
-            width: 800px;
-            height: 600px;
+            width: 560px;
+            height: 420px;
         }
         .chat-container {
-            width: 400px;
+            width: 280px;
             border: 1px solid #ccc;
             display: flex;
             flex-direction: column;
             background-color: white;
         }
         .settings-container {
-            width: 400px;
+            width: 280px;
             border: 1px solid #ccc;
             background-color: white;
-            padding: 10px;
+            padding: 7px;
             overflow-y: auto;
         }
         .chat-header {
-            padding: 10px;
+            padding: 7px;
             background-color: #007bff;
             color: white;
             display: flex;
             justify-content: space-between;
             align-items: center;
         }
+        .chat-header select {
+            max-width: 50%;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
         .chat-messages {
             flex-grow: 1;
             overflow-y: auto;
-            padding: 10px;
+            padding: 7px;
         }
         .chat-input {
             display: flex;
-            padding: 10px;
+            padding: 7px;
         }
         #message-input {
             flex-grow: 1;
-            margin-right: 10px;
-            padding: 5px;
+            margin-right: 7px;
+            padding: 3.5px;
         }
         button {
-            padding: 5px 10px;
+            padding: 3.5px 7px;
             background-color: #007bff;
             color: white;
             border: none;
             cursor: pointer;
         }
         .message {
-            margin-bottom: 10px;
-            padding: 5px 10px;
-            border-radius: 5px;
+            margin-bottom: 7px;
+            padding: 3.5px 7px;
+            border-radius: 3.5px;
             max-width: 80%;
         }
         .user-message {
@@ -78,21 +86,21 @@
             align-self: flex-start;
         }
         .settings-group {
-            margin-bottom: 15px;
+            margin-bottom: 10.5px;
         }
         .settings-group label {
             display: block;
-            margin-bottom: 5px;
+            margin-bottom: 3.5px;
         }
         .settings-group input, .settings-group select {
             width: 100%;
-            padding: 5px;
-            margin-bottom: 5px;
+            padding: 3.5px;
+            margin-bottom: 3.5px;
         }
         #model-image {
             max-width: 100%;
             height: auto;
-            margin-top: 15px;
+            margin-top: 10.5px;
         }
     </style>
 </head>
@@ -112,10 +120,6 @@
         <div class="settings-container">
             <h2>模型設定</h2>
             <div class="settings-group">
-                <label for="model-name">模型名稱:</label>
-                <input type="text" id="model-name">
-            </div>
-            <div class="settings-group">
                 <label for="model-display-name">顯示名稱:</label>
                 <input type="text" id="model-display-name">
             </div>
@@ -131,7 +135,7 @@
                 <label for="top-p">Top P:</label>
                 <input type="number" id="top-p" min="0" max="1" step="0.01" value="0.95">
             </div>
-            <button onclick="addOrUpdateModel()">添加/更新模型</button>
+            <button onclick="updateModelSettings()">更新模型設置</button>
             <div class="settings-group">
                 <label for="model-image-url">模型圖片 URL:</label>
                 <input type="text" id="model-image-url">
@@ -142,45 +146,84 @@
     </div>
 
     <script>
-        // JavaScript 代碼保持不變
         const chatMessages = document.getElementById('chat-messages');
         const messageInput = document.getElementById('message-input');
         const botSelect = document.getElementById('bot-select');
-        const modelName = document.getElementById('model-name');
         const modelDisplayName = document.getElementById('model-display-name');
         const modelImage = document.getElementById('model-image');
 
         let modelNames = {};
         let modelSettings = {};
+        let conversationHistory = [];
+
+        function truncateString(str, maxLength) {
+            if (str.length <= maxLength) return str;
+            return str.substr(0, maxLength - 3) + '...';
+        }
+
+        async function fetchAvailableModels() {
+            try {
+                const response = await axios.get('http://localhost:1234/v1/models');
+                const models = response.data.data.map(model => model.id);
+                models.forEach(model => {
+                    if (!modelNames[model]) {
+                        modelNames[model] = model;
+                        modelSettings[model] = {
+                            displayName: model,
+                            temperature: 0.7,
+                            max_tokens: 2048,
+                            top_p: 0.95
+                        };
+                    }
+                });
+                updateBotSelect();
+            } catch (error) {
+                console.error('Error fetching models:', error);
+                alert('無法獲取模型列表，請確保 LM Studio 正在運行。');
+            }
+        }
 
         function updateBotSelect() {
             botSelect.innerHTML = '';
             for (const [value, name] of Object.entries(modelNames)) {
                 const option = document.createElement('option');
                 option.value = value;
-                option.textContent = name;
+                option.textContent = truncateString(name, 20);
                 botSelect.appendChild(option);
+            }
+            updateSettingsDisplay();
+        }
+
+        function updateSettingsDisplay() {
+            const selectedModel = botSelect.value;
+            const settings = modelSettings[selectedModel];
+            if (settings) {
+                modelDisplayName.value = settings.displayName;
+                document.getElementById('temperature').value = settings.temperature;
+                document.getElementById('max-tokens').value = settings.max_tokens;
+                document.getElementById('top-p').value = settings.top_p;
             }
         }
 
-        function addOrUpdateModel() {
-            const name = modelName.value.trim();
-            const displayName = modelDisplayName.value.trim() || name;
-            const temperature = document.getElementById('temperature').value;
-            const maxTokens = document.getElementById('max-tokens').value;
-            const topP = document.getElementById('top-p').value;
+        function updateModelSettings() {
+            const selectedModel = botSelect.value;
+            const displayName = modelDisplayName.value.trim();
+            const temperature = parseFloat(document.getElementById('temperature').value);
+            const maxTokens = parseInt(document.getElementById('max-tokens').value);
+            const topP = parseFloat(document.getElementById('top-p').value);
 
-            if (name) {
-                modelNames[name] = displayName;
-                modelSettings[name] = {
-                    temperature: parseFloat(temperature),
-                    max_tokens: parseInt(maxTokens),
-                    top_p: parseFloat(topP)
+            if (selectedModel) {
+                modelSettings[selectedModel] = { 
+                    displayName: displayName || selectedModel,
+                    temperature, 
+                    max_tokens: maxTokens, 
+                    top_p: topP 
                 };
+                modelNames[selectedModel] = displayName || selectedModel;
                 updateBotSelect();
-                alert('模型已添加/更新');
+                alert('模型設置已更新');
             } else {
-                alert('請輸入模型名稱');
+                alert('請選擇一個模型');
             }
         }
 
@@ -188,8 +231,6 @@
             const imageUrl = document.getElementById('model-image-url').value;
             modelImage.src = imageUrl;
         }
-
-        let conversationHistory = [];
 
         async function sendMessage() {
             const message = messageInput.value.trim();
@@ -205,7 +246,7 @@
             const messageElement = document.createElement('div');
             messageElement.classList.add('message', `${sender}-message`);
             if (sender === 'assistant') {
-                const modelName = modelNames[botSelect.value] || botSelect.value;
+                const modelName = modelSettings[botSelect.value].displayName || botSelect.value;
                 messageElement.textContent = `${modelName}: ${message}`;
             } else {
                 messageElement.textContent = message;
@@ -230,27 +271,22 @@
         async function callLMStudioAPI(model, message) {
             const apiUrl = 'http://localhost:1234/v1/chat/completions';
             const settings = modelSettings[model] || {};
-            const response = await fetch(apiUrl, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
+            try {
+                const response = await axios.post(apiUrl, {
                     model: model,
                     messages: [
                         ...conversationHistory,
                         {role: "user", content: message}
                     ],
-                    ...settings
-                })
-            });
-
-            if (!response.ok) {
+                    temperature: settings.temperature,
+                    max_tokens: settings.max_tokens,
+                    top_p: settings.top_p
+                });
+                return response.data.choices[0].message.content;
+            } catch (error) {
+                console.error('API request failed:', error);
                 throw new Error('API request failed');
             }
-
-            const data = await response.json();
-            return data.choices[0].message.content;
         }
 
         messageInput.addEventListener('keypress', function(e) {
@@ -259,9 +295,10 @@
             }
         });
 
-        // 初始化一個默認模型
-        modelNames['default-model'] = '默認模型';
-        updateBotSelect();
+        botSelect.addEventListener('change', updateSettingsDisplay);
+
+        // 初始化
+        fetchAvailableModels();
     </script>
 </body>
 </html>
